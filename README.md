@@ -1,63 +1,72 @@
-# 🛡️ AI Person Fall Detection Application
+# Human Fall Detection System
 
-A Streamlit-based computer vision application for detecting human posture and analyzing fall events in videos using YOLO11 Pose estimation and temporal state classification.
-
----
-
-## 📌 Architecture Overview
-
-This project separates **visual feature extraction** from **temporal state classification**:
-
-1. **Pose Estimation Model (`models/yolo11n_pose_pretrained.pt`)**:
-   - Uses the pretrained Ultralytics YOLO11 Nano Pose model (`yolo11n-pose`).
-   - Extracts 17 COCO human body keypoints (shoulders, hips, knees, ankles, etc.) and bounding boxes.
-   - **Important Note:** The `.pt` file contains weights strictly for person pose detection. It is **not** a custom-trained end-to-end fall classifier.
-
-2. **Temporal State Classifier (`fall_detection.py`)**:
-   - Implements rule-based temporal posture analysis in Python.
-   - Computes torso angle from shoulder-to-hip vector (`arctan2(abs(dx), abs(dy))`) and bounding box aspect ratio ($W/H$).
-   - Maintains temporal tracking across consecutive frames to distinguish an active fall transition from static horizontal postures.
+An automated computer vision system for posture classification and fall event detection in video feeds using YOLO11 pose estimation and temporal transition analysis.
 
 ---
 
-## 🏷️ State Definitions
+## Detection Previews
 
-- **`STANDING`**: Person is upright (`torso_angle < 35°` and `aspect_ratio < 0.85`).
-- **`FALLING`**: Person is transitioning from an upright posture toward horizontal within a temporal sliding window ($2 \times \text{FPS}$).
-- **`FALLEN`**: Person maintains a horizontal posture (`torso_angle > 55°` and `aspect_ratio > 0.80`) for at least the configured threshold of consecutive frames (default: 5 frames).
-- **`UNCERTAIN`**: Keypoints are occluded, confidence is below threshold (< 0.25), no person is detected, or the posture is intermediate without a clear transition.
-
-> **Fall Transition Rule:** A fall event is only recorded when an observed transition occurs from a recent `STANDING` state into `FALLING` and sustained `FALLEN`. If a person is lying down from the beginning without an observed fall transition, no fall event is triggered.
+| Standing Posture Detection | Fallen State Detection |
+| :---: | :---: |
+| ![Standing Posture Detection](Standing.png) | ![Fallen State Detection](Fallen.png) |
 
 ---
 
-## 📁 Project Directory Structure
+## Architecture Overview
+
+The system decouples visual feature extraction from temporal posture classification:
+
+1. **Pose Estimation (`models/yolo11n_pose_pretrained.pt`)**
+   - Utilizes the Ultralytics YOLO11 Nano Pose estimation model (`yolo11n-pose`).
+   - Detects person instances and extracts 17 COCO skeletal keypoints (e.g., shoulders, hips, knees, ankles) alongside bounding box coordinates.
+   - *Note:* The model checkpoint provides spatial keypoint detection; classification of fall dynamics is performed by the temporal state engine.
+
+2. **Temporal Posture Classifier (`fall_detection.py`)**
+   - Evaluates geometric indicators per frame, including torso orientation angle (`arctan2(|dx|, |dy|)`) and bounding box aspect ratio (width / height).
+   - Tracks temporal state progression across consecutive frames to differentiate transient movements and horizontal resting states from actual fall transitions.
+
+---
+
+## Posture and State Definitions
+
+- **`STANDING`**: Person maintains an upright vertical posture (`torso_angle < 35°` and `aspect_ratio < 0.85`).
+- **`FALLING`**: Person exhibits a dynamic transition from an upright to a horizontal orientation within an active temporal window ($2 \times \text{FPS}$).
+- **`FALLEN`**: Person remains in a horizontal orientation (`torso_angle > 55°` and `aspect_ratio > 0.80`) for at least the designated frame threshold (default: 5 consecutive frames).
+- **`UNCERTAIN`**: Keypoints are occluded, confidence is below threshold (< 0.25), no subject is detected, or body orientation falls outside defined thresholds.
+
+> **Fall Transition Logic:** A valid fall incident is logged only when a confirmed progression occurs: `STANDING` -> `FALLING` -> sustained `FALLEN`. Pre-existing horizontal postures without an observed descent are classified as horizontal without triggering a fall alert.
+
+---
+
+## Project Structure
 
 ```text
 FallDetection/
-├── app.py                         # Streamlit web interface
-├── fall_detection.py              # Pose inference & temporal state classification logic
-├── requirements.txt               # Project Python dependencies
-├── README.md                      # Documentation and usage guide
+├── app.py                         # Streamlit web dashboard and visualization interface
+├── fall_detection.py              # Pose estimation pipeline and temporal state logic
+├── requirements.txt               # Application dependencies
+├── README.md                      # Project documentation
+├── Standing.png                   # Sample preview: Standing posture
+├── Fallen.png                     # Sample preview: Fallen posture
 ├── models/
-│   ├── yolo11n_pose_pretrained.pt # Pretrained YOLO11 pose checkpoint
-│   └── yolo11n-pose.pt            # Compatibility symlink/copy
-└── outputs/                       # Destination folder for processed annotated videos
+│   ├── yolo11n_pose_pretrained.pt # Pretrained YOLO11 pose weights
+│   └── yolo11n-pose.pt            # Compatibility alias / model weights
+└── outputs/                       # Destination directory for processed video outputs
 ```
 
 ---
 
-## 🚀 Setup & Installation
+## Installation and Setup
 
 ### 1. Prerequisites
-- Python 3.10 – 3.13
-- Virtual environment recommended
+- Python 3.10 - 3.13
+- Virtual environment (recommended)
 
 ### 2. Activate Virtual Environment (PowerShell)
 ```powershell
 .\venv\Scripts\Activate.ps1
 ```
-*(Or create a new environment: `python -m venv venv`)*
+*(Or initialize a new virtual environment: `python -m venv venv`)*
 
 ### 3. Install Dependencies
 ```powershell
@@ -66,7 +75,7 @@ pip install -r requirements.txt
 
 ---
 
-## 💻 Running the Application
+## Running the Application
 
 Launch the Streamlit web dashboard:
 
@@ -74,24 +83,23 @@ Launch the Streamlit web dashboard:
 streamlit run app.py
 ```
 
-The application will open in your browser at `http://localhost:8501`.
+Access the interface in your browser at `http://localhost:8501`.
 
-### Usage Steps:
-1. Upload a video file (`.mp4`, `.avi`, `.mov`, `.mkv`).
-2. Adjust detection settings in the sidebar if needed:
-   - **Detection confidence**: Confidence threshold for YOLO person detection (default: 0.35).
-   - **Fallen frames threshold**: Minimum consecutive horizontal frames required to declare `FALLEN` (default: 5).
-   - **Display pose keypoints**: Toggle skeleton rendering overlay.
-3. Click **"Analyze Video"**.
-4. View the real-time progress bar, original video preview, annotated output video, state counts, measured inference metrics, and download the annotated video.
+### Operational Workflow:
+1. Upload a target video file (`.mp4`, `.avi`, `.mov`, `.mkv`).
+2. Configure detection parameters in the sidebar:
+   - **Detection Confidence**: Threshold for person keypoint detection (default: 0.35).
+   - **Fallen Frames Threshold**: Number of consecutive horizontal frames required to confirm a `FALLEN` state (default: 5).
+   - **Keypoint Overlay**: Toggle skeletal overlay visualization.
+3. Select **Analyze Video** to begin processing.
+4. Review real-time progress, metrics, state distribution summary, and download the annotated output video.
 
 ---
 
-## ⚠️ System Limitations & Custom Training
+## Limitations and Future Improvements
 
-- **Lighting & Camera Angle:** Works best with overhead or wall-mounted camera views where torso and hip keypoints are visible.
-- **Occlusions:** When keypoints are obscured, detections safely fall back to `UNCERTAIN`.
-- **Pretrained Pose vs. Custom Classifier:** The current system uses heuristic temporal thresholds on top of pose keypoints. To train a custom real-world fall classification model:
-  - Collect a labeled dataset with real temporal sequences (e.g., UR Fall Detection Dataset, Multiple Cameras Fall Dataset, Le2i Fall Detection Dataset).
-  - Extract temporal keypoint sequences or 3D bounding boxes.
-  - Train an action-recognition model (e.g., ST-GCN, PoseConv3D, or LSTM) on real-world fall sequences.
+- **Camera Placement and Lighting:** Optimal performance occurs with elevated or wall-mounted perspectives where torso and hip keypoints remain visible.
+- **Occlusions:** Obscured skeletal landmarks automatically trigger the fallback `UNCERTAIN` classification.
+- **Custom Model Training:** The current pipeline implements rule-based temporal heuristics on top of spatial keypoint coordinates. For advanced operational deployment:
+  - Benchmark against standard public datasets (e.g., UR Fall Detection, Le2i Fall Detection, Multiple Cameras Fall Dataset).
+  - Train temporal graph convolutional networks (e.g., ST-GCN) or spatio-temporal action recognition architectures directly on sequence data.
