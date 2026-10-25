@@ -1,4 +1,6 @@
-/venv
-/.vscode
-/_pycache
-/output
+venv/
+.vscode/
+__pycache__/
+*.pyc
+outputs/
+test_sample_video.mp4
