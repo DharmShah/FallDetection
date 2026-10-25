@@ -4,3 +4,4 @@ opencv-python-headless>=4.10.0
 numpy>=1.26.0
 torch>=2.2.0
 torchvision>=0.17.0
+lapx>=0.5.5

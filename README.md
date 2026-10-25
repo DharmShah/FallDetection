@@ -14,16 +14,25 @@ An automated computer vision system for posture classification and fall event de
 
 ## Architecture Overview
 
-The system decouples visual feature extraction from temporal posture classification:
+The system decouples visual feature extraction, temporal posture classification, and multi-object tracking:
 
-1. **Pose Estimation (`models/yolo11n_pose_pretrained.pt`)**
-   - Utilizes the Ultralytics YOLO11 Nano Pose estimation model (`yolo11n-pose`).
-   - Detects person instances and extracts 17 COCO skeletal keypoints (e.g., shoulders, hips, knees, ankles) alongside bounding box coordinates.
+1. **Pose Estimation & Multi-Object Tracking (`models/yolo11n_pose_pretrained.pt`)**
+   - Utilizes the Ultralytics YOLO11 Nano Pose model (`yolo11n-pose`).
+   - Detects person instances, extracts 17 COCO skeletal keypoints, and assigns persistent tracking IDs using ByteTrack (`model.track(persist=True, tracker="bytetrack.yaml")`).
    - *Note:* The model checkpoint provides spatial keypoint detection; classification of fall dynamics is performed by the temporal state engine.
 
 2. **Temporal Posture Classifier (`fall_detection.py`)**
    - Evaluates geometric indicators per frame, including torso orientation angle (`arctan2(|dx|, |dy|)`) and bounding box aspect ratio (width / height).
    - Tracks temporal state progression across consecutive frames to differentiate transient movements and horizontal resting states from actual fall transitions.
+
+3. **Virtual Line-Crossing People Counter (`fall_detection.py:VirtualLineCounter`)**
+   - Draws a configurable vertical line across the frame (default: 50% width).
+   - Tracks the bottom-center point of each person's bounding box across frames.
+   - Utilizes hysteresis deadband corridor to prevent jitter and duplicate counting when standing near the line.
+   - Counting rules:
+     - **Left to Right (L->R)**: Increments right-side count by 1.
+     - **Right to Left (R->L)**: Decrements right-side count by 1 (non-negative by default).
+     - **Independent**: Operates in parallel without interfering with fall detection alerts.
 
 ---
 
@@ -43,8 +52,10 @@ The system decouples visual feature extraction from temporal posture classificat
 ```text
 FallDetection/
 ├── app.py                         # Streamlit web dashboard and visualization interface
-├── fall_detection.py              # Pose estimation pipeline and temporal state logic
-├── requirements.txt               # Application dependencies
+├── fall_detection.py              # Pose estimation, temporal state logic, and VirtualLineCounter
+├── requirements.txt               # Application dependencies (including lapx for ByteTrack)
+├── test_line_counter.py           # Unit tests for line-crossing counting scenarios
+├── test_pipeline.py               # End-to-end synthetic video validation test
 ├── README.md                      # Project documentation
 ├── Standing.png                   # Sample preview: Standing posture
 ├── Fallen.png                     # Sample preview: Fallen posture
@@ -87,12 +98,30 @@ Access the interface in your browser at `http://localhost:8501`.
 
 ### Operational Workflow:
 1. Upload a target video file (`.mp4`, `.avi`, `.mov`, `.mkv`).
-2. Configure detection parameters in the sidebar:
+2. Configure detection and tracking parameters in the sidebar:
    - **Detection Confidence**: Threshold for person keypoint detection (default: 0.35).
    - **Fallen Frames Threshold**: Number of consecutive horizontal frames required to confirm a `FALLEN` state (default: 5).
    - **Keypoint Overlay**: Toggle skeletal overlay visualization.
+   - **Enable Virtual Line Counter**: Toggle line-crossing counter.
+   - **Line Position**: Configurable vertical line placement (10% to 90% of frame width, default: 50%).
+   - **Initial Right-Side Count**: Set initial count (default: 0).
+   - **Allow Negative Count**: Toggle negative counting if needed.
 3. Select **Analyze Video** to begin processing.
-4. Review real-time progress, metrics, state distribution summary, and download the annotated output video.
+4. Review real-time progress, live video playback, people counter HUD metrics, state distribution summary, and download the annotated output video.
+
+---
+
+## Automated Tests
+
+Run unit tests verifying the 6 simulated line-crossing scenarios:
+```powershell
+python test_line_counter.py
+```
+
+Run end-to-end pipeline test:
+```powershell
+python test_pipeline.py
+```
 
 ---
 
@@ -100,6 +129,7 @@ Access the interface in your browser at `http://localhost:8501`.
 
 - **Camera Placement and Lighting:** Optimal performance occurs with elevated or wall-mounted perspectives where torso and hip keypoints remain visible.
 - **Occlusions:** Obscured skeletal landmarks automatically trigger the fallback `UNCERTAIN` classification.
+- **Tracking ID Continuity:** If a person is occluded for an extended period, ByteTrack may assign a new tracking ID upon reappearance.
 - **Custom Model Training:** The current pipeline implements rule-based temporal heuristics on top of spatial keypoint coordinates. For advanced operational deployment:
   - Benchmark against standard public datasets (e.g., UR Fall Detection, Le2i Fall Detection, Multiple Cameras Fall Dataset).
   - Train temporal graph convolutional networks (e.g., ST-GCN) or spatio-temporal action recognition architectures directly on sequence data.
